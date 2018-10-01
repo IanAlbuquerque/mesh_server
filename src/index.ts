@@ -21,6 +21,7 @@ app.get('/*',function(request, response, next){
 app.get('/mesh/:id', function (request, response) {
   // This code is likely vulnerable!
   const id: string = request.params.id;
+  console.log(`Received call from ${request.ip} for /mesh/` + id);
   fs.readFile('./meshes/' + id + '.obj', (err, data) => {
     if (err) {
       response.status(500).send(`Internal error when reading mesh ` + err);

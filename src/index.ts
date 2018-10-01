@@ -13,6 +13,11 @@ server.listen(process.env.PORT || 8999, () => {
   console.log(`Server started on port ${server.address().port}`);
 });
 
+// global controller
+app.get('/*',function(request, response, next){
+  response.header('Access-Control-Allow-Origin', '*');
+});
+
 app.get('/mesh/:id', function (request, response) {
   // This code is likely vulnerable!
   const id: string = request.params.id;

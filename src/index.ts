@@ -68,28 +68,104 @@ function parseOBJFile(data: string): { buffer: number[], triangleCount: number }
   return { buffer: buffer, triangleCount: triangleCount };  
 }
 
+// https://www.visgraf.impa.br/Data/RefBib/PS_PDF/sib03wilson/fffc.pdf
+function edgeFlip(cornerTable: { G: number[], V: number[], O: number[] }, c0: number, valence: number[]): void {
+  // Label incident corners
+  const c1: number = next(c0);
+  const c2: number = previous(c0);
+
+  const c3: number = cornerTable.O[c0];
+
+  const c4: number = next(c3);
+  const c5: number = previous(c3);
+
+  const a: number = cornerTable.O[c5];
+  const b: number = cornerTable.O[c1];
+  const c: number = cornerTable.O[c4];
+  const d: number = cornerTable.O[c2];
+
+  // Label incident vertices
+  const t: number = cornerTable.V[c0];
+  const s: number = cornerTable.V[c3];
+  const v: number = cornerTable.V[c1];
+
+  // cannot perform operation on vertices with valence <= 3
+  const u: number = cornerTable.V[c2]; // u is not used anywhere
+  if(valence[u] <= 3) return;
+  if(valence[v] <= 3) return;
+
+  const ccu: Vector3 = new Vector3( cornerTable.G[u * 3 + 0],
+                                    cornerTable.G[u * 3 + 1],
+                                    cornerTable.G[u * 3 + 2]);
+  const ccv: Vector3 = new Vector3( cornerTable.G[v * 3 + 0],
+                                    cornerTable.G[v * 3 + 1],
+                                    cornerTable.G[v * 3 + 2]);
+  const ccs: Vector3 = new Vector3( cornerTable.G[s * 3 + 0],
+                                    cornerTable.G[s * 3 + 1],
+                                    cornerTable.G[s * 3 + 2]);
+  const cct: Vector3 = new Vector3( cornerTable.G[t * 3 + 0],
+                                    cornerTable.G[t * 3 + 1],
+                                    cornerTable.G[t * 3 + 2]);
+
+
+  const nold1: Vector3 = normalFromTriangleVertices(cct, ccv, ccu);
+  const nold2: Vector3 = normalFromTriangleVertices(ccs, ccu, ccv);
+  const nnew1: Vector3 = normalFromTriangleVertices(ccu, cct, ccs);
+  const nnew2: Vector3 = normalFromTriangleVertices(cct, ccv, ccs);
+
+  if( nold1.dot(nnew1) < 0 ) return;
+  if( nold1.dot(nnew2) < 0 ) return;
+  if( nold2.dot(nnew1) < 0 ) return;
+  if( nold2.dot(nnew2) < 0 ) return;
+
+  valence[u] -= 1;
+  valence[v] -= 1;
+  valence[s] += 1;
+  valence[t] += 1;
+  
+  // Perform swap
+  // cornerTable.V[c0] = t; // stays the same
+  cornerTable.V[c1] = s;
+  // cornerTable.V[c2] = u; // stays the same
+  cornerTable.V[c3] = v;
+  cornerTable.V[c4] = s;
+  cornerTable.V[c5] = t;
+
+  // Reset opposite corners
+  cornerTable.O[c0] = a;
+  // cornerTable.O[c1] = b; // stays the same
+  cornerTable.O[c2] = c3;
+  cornerTable.O[c3] = c2;
+  cornerTable.O[c4] = d;
+  cornerTable.O[c5] = c;
+
+  cornerTable.O[a] = c0;
+  // cornerTable.O[b] = c1;
+  cornerTable.O[c] = c5;
+  cornerTable.O[d] = c4;
+}
+
 function parseOBJFileToCornerTable(data: string): { G: number[], V: number[], O: number[] } {
   
   const G: number[] = [];
   const V: number[] = [];
 
-  const words: string[] = data.replace( /\n/g, " " ).split( " " );
-
-  // Read File
-  for(let i=0; i<words.length; i++) {
-    if(words[i].includes("v")) {
-      G.push(+words[i+1]); // Syntax note: +stringVariable evaluates stringVariable to a number
-      G.push(+words[i+2]);
-      G.push(+words[i+3]);
-      i+=3;
+  const lines: string[] = data.split("\n");
+  for(let i=0; i<lines.length; i++) {
+    const words: string[] = lines[i].split(/\s+/g);
+    if(words[0] === "#") {
       continue;
-    }
-    if(words[i].includes("f")) {
-      V.push(+words[i+1] - 1);
-      V.push(+words[i+2] - 1);
-      V.push(+words[i+3] - 1);
-      i+=3;
-      continue;
+    } else if( words[0] === "v") {
+      G.push(+words[1]); // Syntax note: +stringVariable evaluates stringVariable to a number
+      G.push(+words[2]);
+      G.push(+words[3]);
+    } else if(words[0] === "f") {
+      const v1: string[] = words[1].split("/");
+      const v2: string[] = words[2].split("/");
+      const v3: string[] = words[3].split("/");
+      V.push(+v1[0] - 1);
+      V.push(+v2[0] - 1);
+      V.push(+v3[0] - 1);
     }
   }
 
@@ -128,13 +204,32 @@ function parseOBJFileToCornerTable(data: string): { G: number[], V: number[], O:
     }
   }
 
+  const valence: number[] = [];
+
+  for(let i=0; i<V.length; i++) {
+    if(valence[V[i]] === undefined) {
+      valence[V[i]] = 0;
+    }
+    valence[V[i]] += 1;
+  }
+  
+  for(let j=0; j<1; j++) {
+    for(let i=0; i<V.length; i++) {
+      edgeFlip({ G: G, V: V, O: O }, i, valence);
+    }
+  }
+
   return { G: G, V: V, O: O };  
 }
 
 function next(corner: number): number {
-  if(corner % 3 == 2) {
+  if(corner % 3 === 2) {
     return corner - 2;
   } else {
     return corner + 1;
   }
+}
+
+function previous(corner: number): number {
+  return next(next(corner));
 }

@@ -15,7 +15,9 @@
     "@types/ws": "^3.2.0",
     "body-parser": "^1.18.2",
     "express": "^4.16.2",
-    "ws": "^3.3.2"
+    "ws": "^3.3.2",
+    "@types/mathjs": "^4.4.3",
+    "mathjs": "^5.2.3"
   },
   "devDependencies": {
     "@types/node": "^8.0.53",

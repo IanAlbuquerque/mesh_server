@@ -69,6 +69,62 @@ function parseOBJFile(data: string): { buffer: number[], triangleCount: number }
 }
 
 // https://www.visgraf.impa.br/Data/RefBib/PS_PDF/sib03wilson/fffc.pdf
+function edgeWeld(cornerTable: { G: number[], V: number[], O: number[] }, c0: number, valence: number[]): void {
+  
+  // Assign Incidences
+  const c1: number = next(c0);
+  const c2: number = previous(c0);
+  const c3: number = cornerTable.O[c1]
+  const c4: number = next(c3);
+  const c5: number = previous(c3);
+  
+  const a: number = cornerTable.O[next(cornerTable.O[c5])];
+  const b: number = cornerTable.O[previous(cornerTable.O[c2])];
+
+  const w: number = cornerTable.V[cornerTable.O[c2]];
+  const u: number = cornerTable.V[c2];
+  const v: number = cornerTable.V[c0];
+  const s: number = cornerTable.V[c3];
+  const t: number = cornerTable.V[c1];
+
+  // =====================================
+
+
+  // the central vertex has to have valence 4
+  if(valence[v] != 4) {
+    return;
+  }
+
+  if(isThereAnEdgeFromCornerToVertex(cornerTable, c2, w)) {
+    return;
+  }
+
+  valence[s] -= 1;
+  valence[t] -= 1;
+  valence[v] = 0;
+
+  // =====================================
+
+  // Perform vertex removal
+  cornerTable.V[c0] = w;
+  cornerTable.V[c4] = w;
+
+  // Mark Removed Elements
+  cornerTable.O[cornerTable.O[c2]] = -1;
+  cornerTable.O[cornerTable.O[c5]] = -1;
+  cornerTable.O[next(cornerTable.O[c2])] = -1;
+  cornerTable.O[previous(cornerTable.O[c2])] = -1;
+  cornerTable.O[next(cornerTable.O[c5])] = -1;
+  cornerTable.O[previous(cornerTable.O[c5])] = -1;
+
+  // Reset opposite corners
+  cornerTable.O[c5] = a;
+  cornerTable.O[a] = c5;
+  cornerTable.O[b] = c2;
+  cornerTable.O[c2] = b;
+}
+
+// https://www.visgraf.impa.br/Data/RefBib/PS_PDF/sib03wilson/fffc.pdf
 function edgeFlip(cornerTable: { G: number[], V: number[], O: number[] }, c0: number, valence: number[]): void {
   // Label incident corners
   const c1: number = next(c0);
@@ -89,11 +145,18 @@ function edgeFlip(cornerTable: { G: number[], V: number[], O: number[] }, c0: nu
   const s: number = cornerTable.V[c3];
   const v: number = cornerTable.V[c1];
 
-  // cannot perform operation on vertices with valence <= 3
+  // =====================================
+  
   const u: number = cornerTable.V[c2]; // u is not used anywhere
+
+  // =====================================
+
+  // cannot perform operation on vertices with valence <= 3
   if(valence[u] <= 3) return;
   if(valence[v] <= 3) return;
 
+  // geometry check
+  // should I really do that here?
   const ccu: Vector3 = new Vector3( cornerTable.G[u * 3 + 0],
                                     cornerTable.G[u * 3 + 1],
                                     cornerTable.G[u * 3 + 2]);
@@ -123,6 +186,8 @@ function edgeFlip(cornerTable: { G: number[], V: number[], O: number[] }, c0: nu
   valence[s] += 1;
   valence[t] += 1;
   
+  // =====================================
+
   // Perform swap
   // cornerTable.V[c0] = t; // stays the same
   cornerTable.V[c1] = s;
@@ -215,11 +280,32 @@ function parseOBJFileToCornerTable(data: string): { G: number[], V: number[], O:
   
   for(let j=0; j<1; j++) {
     for(let i=0; i<V.length; i++) {
-      edgeFlip({ G: G, V: V, O: O }, i, valence);
+      if(O[i] == -1) {
+        continue;
+      }
+      // edgeFlip({ G: G, V: V, O: O }, i, valence);
+      edgeWeld({ G: G, V: V, O: O }, i, valence);
     }
   }
 
+  console.log("done");
+
   return { G: G, V: V, O: O };  
+}
+
+function isThereAnEdgeFromCornerToVertex( cornerTable: { G: number[], V: number[], O: number[] },
+                                          corner: number,
+                                          v: number ): boolean {
+  const w: number = cornerTable.V[corner];
+  let it = corner;
+  do {
+    const prevIt: number = it;
+    it = counterclockwise(cornerTable, it);
+    if (v == cornerTable.V[next(it)]) {
+      return true;
+    }
+  } while(it != corner);
+  return false;
 }
 
 function next(corner: number): number {
@@ -232,4 +318,20 @@ function next(corner: number): number {
 
 function previous(corner: number): number {
   return next(next(corner));
+}
+
+function left(cornerTable: { G: number[], V: number[], O: number[] }, corner: number): number {
+  return cornerTable.O[next(corner)];
+}
+
+function right(cornerTable: { G: number[], V: number[], O: number[] }, corner: number): number {
+  return cornerTable.O[previous(corner)];
+}
+
+function clockwise(cornerTable: { G: number[], V: number[], O: number[] }, corner: number): number {
+  return previous(right(cornerTable, corner));
+}
+
+function counterclockwise(cornerTable: { G: number[], V: number[], O: number[] }, corner: number): number {
+  return next(left(cornerTable, corner));
 }

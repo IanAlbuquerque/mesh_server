@@ -1,0 +1,1 @@
+export { CornerTable } from "./corner-table/corner-table";

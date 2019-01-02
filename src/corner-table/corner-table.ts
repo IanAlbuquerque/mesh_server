@@ -1,4 +1,4 @@
-import { Vector3, normalFromTriangleVertices } from "./../linalg";
+import { Vector3, Vector4, Mat4, normalFromTriangleVertices } from "./../linalg";
 import { FibonacciHeap } from '@tyriar/fibonacci-heap';
 
 // Those are just aliases so the code is clear(er)
@@ -194,12 +194,6 @@ export class CornerTable {
         corners.push(iterator);
       }
     } while(iterator !== corner);
-    // const v: Vertex = this.V[corner];
-    // for(let c of corners) {
-    //   if(this.V[c] !== v) {
-    //     console.log("WTF!!!");
-    //   }
-    // }
     return corners;
   }
 
@@ -354,6 +348,10 @@ export class CornerTable {
     return this.G[vertex * 3 + 2];
   }
 
+  private getVertexCoords(vertex: Vertex): Vector3 {
+    return new Vector3(this.getVertexX(vertex), this.getVertexY(vertex), this.getVertexZ(vertex));
+  }
+
   private getExistingVertices(): Vertex[] {
     const existingVertices: Vertex[] = [];
     for(let corner: Corner = 0; corner < this.V.length; corner++) {
@@ -372,6 +370,15 @@ export class CornerTable {
       }
     }
     return existingCorners;
+  }
+
+  private getLinkClockwise(c0: Corner): Vertex[] {
+    const corners: Corner[] = this.getCornersThatShareSameVertexClockwise(c0);
+    const link: Vertex[] = [];
+    for(let corner of corners) {
+      link.push(this.V[this.next(corner)]);
+    }
+    return link;
   }
 
   // ==================================================================
@@ -541,6 +548,41 @@ export class CornerTable {
     this.O[b] = c1;
     this.O[c] = c5;
     this.O[d] = c4;
+  }
+
+  // ==================================================================
+  // #endregion
+  // ==================================================================
+
+  // ==================================================================
+  // #region SIMPLIFICATION ALGORITHMS
+  // ==================================================================
+
+  private getQuadricFromCorner(c0: Corner): Mat4 {
+    const v: Vertex = this.V[c0];
+    const link: Vertex[] = this.getLinkClockwise(c0);
+    const triangles: { p0: Vertex, p1: Vertex, p2: Vertex }[] = [];
+    for(let i: number = 0; i<link.length-1; i++) {
+      // order is important for normal
+      triangles.push({p0: v, p1: link[i+1], p2: link[i]});
+    }
+    triangles.push({p0: v, p1: link[0], p2: link[link.length-1]});
+    const normals: Vector3[] = [];
+    for(const triangle of triangles) {
+      normals.push(normalFromTriangleVertices(  this.getVertexCoords(triangle.p0),
+                                                this.getVertexCoords(triangle.p1),
+                                                this.getVertexCoords(triangle.p2)));
+    }
+    let res: Mat4 = new Mat4();
+    res.setToZero();
+    const vCoords: Vector3 = this.getVertexCoords(v);
+    for(const normal of normals) {
+      const normalQuad: Mat4 = new Mat4();
+      const w: number = normal.dot(vCoords) * -1;
+      normalQuad.buildSymmetrixFromVec4(normal.toVec4Homogeneous(w));
+      res = res.add(normalQuad);
+    }
+    return res;
   }
 
   // ==================================================================

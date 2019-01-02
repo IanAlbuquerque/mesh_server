@@ -1,4 +1,5 @@
 import * as mathjs from "mathjs";
+import { Vector4 } from "./vector4";
 
 export class Vector3 {
 
@@ -51,6 +52,10 @@ export class Vector3 {
 
   public norm(): number {
     return mathjs.sqrt((this.x * this.x) + (this.y * this.y) + (this.z * this.z));
+  }
+
+  public toVec4Homogeneous(w: number): Vector4 {
+    return new Vector4(this.array[0], this.array[1], this.array[2], w);
   }
 
   public normalized(): Vector3 {

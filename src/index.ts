@@ -30,7 +30,7 @@ app.get('/mesh/:id', function (request, response) {
     }
     const cornerTable: CornerTable = new CornerTable();
     cornerTable.initFromOBJFileData(data.toString());
-    cornerTable.applyEdgeWelds();
+    cornerTable.simplifyOneLevel();
     response.status(200).send(JSON.stringify(cornerTable.getData()));
   });
 });

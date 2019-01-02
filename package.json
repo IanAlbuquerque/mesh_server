@@ -12,12 +12,13 @@
   "license": "ISC",
   "dependencies": {
     "@types/express": "^4.0.39",
+    "@types/mathjs": "^4.4.3",
     "@types/ws": "^3.2.0",
+    "@tyriar/fibonacci-heap": "^2.0.9",
     "body-parser": "^1.18.2",
     "express": "^4.16.2",
-    "ws": "^3.3.2",
-    "@types/mathjs": "^4.4.3",
-    "mathjs": "^5.2.3"
+    "mathjs": "^5.2.3",
+    "ws": "^3.3.2"
   },
   "devDependencies": {
     "@types/node": "^8.0.53",

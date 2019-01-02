@@ -1,4 +1,5 @@
 import { Vector3, normalFromTriangleVertices } from "./../linalg";
+import { FibonacciHeap } from '@tyriar/fibonacci-heap';
 
 // Those are just aliases so the code is clear(er)
 // The "& { readonly brand?: unique symbol }" is such that one type cannot be typecasted to the other (and we get compile errors for that!)
@@ -134,6 +135,9 @@ export class CornerTable {
     }
   
     this.O = [];
+    for(let i=0; i<this.V.length; i++) {
+      this.O.push(REMOVED_CORNER);
+    }
     const numTriangles: number = this.V.length / 3;
     const halfEdgeToCornerDictionary: { [key: string]: Corner } = {}
   
@@ -167,7 +171,7 @@ export class CornerTable {
       this.O[corner] = halfEdgeToCornerDictionary[this.halfEdgeToKey(nextNextVertex, nextVertex)];
       
       // If our hypothesis is correct, all corners should have opposites!
-      if(this.O[corner] == undefined || this.O[corner] == null) {
+      if(this.O[corner] === undefined || this.O[corner] === null) {
         throw "Given mesh does not agree with hypothesis";
       }
     }
@@ -186,8 +190,16 @@ export class CornerTable {
     let iterator: Corner = corner;
     do {
       iterator = this.clockwise(iterator);
-      corners.push(iterator);
-    } while(iterator != corner);
+      if(this.isCornerInMesh(iterator)) {
+        corners.push(iterator);
+      }
+    } while(iterator !== corner);
+    // const v: Vertex = this.V[corner];
+    // for(let c of corners) {
+    //   if(this.V[c] !== v) {
+    //     console.log("WTF!!!");
+    //   }
+    // }
     return corners;
   }
 
@@ -209,6 +221,9 @@ export class CornerTable {
     const cornerNewPlace: { [oldCorner: number]: Corner } = {};
     for(let corner: Corner = 0; corner < this.V.length; corner++) {
       if(this.isCornerInMesh(corner)) {
+        if(!this.isCornerInMesh(this.O[corner])) {
+          console.log("Something wrong on cleanup! Opposite corner not in mesh!");
+        }
         newV.push(this.V[corner]);
         newO.push(this.O[corner]);
         cornerNewPlace[corner] = newO.length - 1;
@@ -250,15 +265,77 @@ export class CornerTable {
   // #region DATA STRUCTURE QUERIES
   // ==================================================================
 
+  private isCornerTableTopologicallyGood(): boolean {
+    let foundError: boolean = false;
+    if(this.getExistingVertices().length - (this.getExistingCorners().length / 2) + (this.getExistingCorners().length / 3) !== 2) {
+      console.log("ERROR EULER CHARACTERISTIC");
+      foundError = true;
+    }
+    const corners: Corner[] = this.getExistingCorners();
+    for(let corner of corners) {
+      if(!this.isCornerInMesh(corner) || !this.isCornerInMesh(this.next(corner)) || !this.isCornerInMesh(this.prev(corner))) {
+        console.log("ERROR TRIANGLE NOT CONSISTENTLY REMOVED");
+        foundError = true;
+        break;
+      }
+    }
+    for(let corner of corners) {
+      if(this.V[corner] === this.V[this.next(corner)] || this.V[corner] === this.V[this.prev(corner)] || this.V[this.next(corner)] === this.V[this.prev(corner)]) {
+        console.log("ERROR VERTEX TRIANGLE");
+        foundError = true;
+        break;
+      }
+    }
+    for(let corner of corners) {
+      if(this.O[this.O[corner]] !== corner) {
+        console.log("ERROR OPPOSITE OPERATOR TRIANGLE");
+        foundError = true;
+        break;
+      }
+    }
+    for(let corner of corners) {
+      const clockwise: Corner[] = this.getCornersThatShareSameVertexClockwise(corner);
+      for(let cloCorner of clockwise) {
+        if(this.V[corner] != this.V[cloCorner]) {
+          console.log("ERROR CORNERS CLOCKWISE DIFF VERTEX!");
+          foundError = true;
+          break;
+        }
+      }
+    }
+    for(let corner1 of corners) {
+      for(let corner2 of corners) {
+        if(this.V[corner1] === this.V[corner2] &&
+          this.getCornersThatShareSameVertexClockwise(corner1).indexOf(corner2) === -1) {
+          console.log("ERROR SAME VERTEX, DIFFERENT RING " + corner1 + " " + corner2 + " vertex=" + this.V[corner1]);
+          foundError = true;
+          break;
+        }
+      }
+    }
+    for(let corner of corners) {
+      if(this.valenceOfVertexAssociatedToCorner(corner) < 3) {
+        console.log("ERROR VALENCE CORNER");
+        foundError = true;
+        break;
+      }
+    }
+    if(foundError) {
+      return false;
+    }
+    return true;
+  }
+
   private isCornerInMesh(c0: Corner): boolean {
-    return this.O[c0] != REMOVED_CORNER;
+    return this.O[c0] !== REMOVED_CORNER;
   }
 
   private isThereAnEdgeFromCornerToVertex(corner: Corner, v: Vertex): boolean {
     const w: Vertex = this.V[corner];
     const corners: Corner[] = this.getCornersThatShareSameVertexClockwise(corner);
     for(let c of corners) {
-      if (v == this.V[this.next(c)]) {
+      if (v === this.V[this.next(c)]) {
+        // console.log("incompatibleCorners = " + c + "_" + this.next(c));
         return true;
       }
     }
@@ -280,11 +357,21 @@ export class CornerTable {
   private getExistingVertices(): Vertex[] {
     const existingVertices: Vertex[] = [];
     for(let corner: Corner = 0; corner < this.V.length; corner++) {
-      if(this.isCornerInMesh(corner)) {
+      if(this.isCornerInMesh(corner) && existingVertices.indexOf(this.V[corner]) < 0) {
         existingVertices.push(this.V[corner]);
       }
     }
     return existingVertices;
+  }
+
+  private getExistingCorners(): Corner[] {
+    const existingCorners: Corner[] = [];
+    for(let corner: Corner = 0; corner < this.V.length; corner++) {
+      if(this.isCornerInMesh(corner)) {
+        existingCorners.push(corner);
+      }
+    }
+    return existingCorners;
   }
 
   // ==================================================================
@@ -301,7 +388,7 @@ export class CornerTable {
     if(!this.isCornerInMesh(c0)) {
       return false;
     }
-    if(this.valenceOfVertexAssociatedToCorner(c0) != 4) {
+    if(this.valenceOfVertexAssociatedToCorner(c0) !== 4) {
       return false;
     }
     if(this.isThereAnEdgeFromCornerToVertex(c2, w)) {
@@ -352,6 +439,7 @@ export class CornerTable {
     // cannot perform operation on vertices with valence <= 3
     if(this.valenceOfVertexAssociatedToCorner(c1) <= 3) return false;
     if(this.valenceOfVertexAssociatedToCorner(c2) <= 3) return false;
+    if(this.isThereAnEdgeFromCornerToVertex(c0, this.V[this.O[c0]])) return false;
     return true;
   }
   
@@ -414,27 +502,43 @@ export class CornerTable {
     const s: Vertex = this.V[c3];
     const v: Vertex = this.V[c1];
     const u: Vertex = this.V[c2]; // u is not used anywhere
+
+    if( t==s || t==v || t==u ||
+        s == v || s == u ||
+        v == u) {
+        console.log("Vertices: t,s,v,u =" + t + "-" + c0 + "," + s + "-" + c3  + "," + v + "-" + c1  + "," + u + "-" + c2);
+        // console.log("c0 = " + c0);
+        // console.log("O[c0] = " + this.O[c0]);
+        // for(let corner of this.getCornersThatShareSameVertexClockwise(c0)) {
+        //   console.log(corner);
+        // }
+        // console.log("c3 = " + c3)
+        // console.log("O[c3] = " + this.O[c3]);
+        // for(let corner of this.getCornersThatShareSameVertexClockwise(c0)) {
+        //   console.log(corner);
+        // }
+      }
     
     // =====================================
 
     // Perform swap
-    // this.V[c0] = t; // stays the same
+    this.V[c0] = t; // stays the same
     this.V[c1] = s;
-    // this.V[c2] = u; // stays the same
+    this.V[c2] = u; // stays the same
     this.V[c3] = v;
     this.V[c4] = s;
     this.V[c5] = t;
 
     // Reset opposite corners
     this.O[c0] = a;
-    // this.O[c1] = b; // stays the same
+    this.O[c1] = b; // stays the same
     this.O[c2] = c3;
     this.O[c3] = c2;
     this.O[c4] = d;
     this.O[c5] = c;
 
     this.O[a] = c0;
-    // this.O[b] = c1;
+    this.O[b] = c1;
     this.O[c] = c5;
     this.O[d] = c4;
   }
@@ -460,38 +564,112 @@ export class CornerTable {
 
   private simplifyToNextMeshLevel(): void {
     const existingVertices: Vertex[] = this.getExistingVertices();
-    const isVertexAvailable: boolean[] = [];
-    
+    const isVertexAvailable: { [vertex: number]: boolean } = {};
+
+    // Lets not deal with meshes with very few vertices
+    // It breaks one of the proofs that ensures that we can flip edges to make valence = 4 (duh)
+    if(existingVertices.length <= 4) {
+      return;
+    }
+
     // mark all existing vertices as available
     for(let vertex of existingVertices) {
       isVertexAvailable[vertex] = true;
     }
 
-    //select a vertex
-    let cornerSelected: number = -1;
-    for(let i=0; i<this.V.length; i++) {
-      if(isVertexAvailable[this.V[i]]) {
-        cornerSelected = i;
+    let iterations: number = 0;
+    while(true) {
+      iterations++;
+      //select a vertex
+      let cornerSelected: Corner = -1;
+      let vertexSelected: Vertex = -1;
+      for(let corner: Corner =0; corner<this.V.length; corner++) {
+        if(isVertexAvailable[this.V[corner]] && this.isCornerInMesh(corner)) {
+          cornerSelected = corner;
+          vertexSelected = this.V[cornerSelected];
+          break;
+        }
+      }
+
+      // end algorithm
+      if(cornerSelected === -1) {
         break;
       }
-    }
 
-    if(cornerSelected == -1) {
-      // end algorithm
-      return;
-    }
+      // mark vertices
+      let corners: Corner[] = this.getCornersThatShareSameVertexClockwise(cornerSelected);
+      for(const corner of corners) {
+        isVertexAvailable[this.V[this.next(corner)]] = false;
+      }
+      isVertexAvailable[this.V[cornerSelected]] = false;
 
-    const valenceDelta: number = this.valenceOfVertexAssociatedToCorner(cornerSelected) - 4;
+      const valenceDelta: number = this.valenceOfVertexAssociatedToCorner(cornerSelected) - 4;
 
-    if(valenceDelta < 0) {
-      // for(const i = 0)
-    }
-    else if(valenceDelta > 0) {
-      
-    }
+      // valence must be >= 3 (hence, valenceDelta >= -1)
+      // so valenceDelta < 0 is equivalent to valenceDelta === -1
+      if(valenceDelta < 0) {
+        let cornerToFlip: Corner = -1;
+        let corners: Corner[] = this.getCornersThatShareSameVertexClockwise(cornerSelected);
+        for(let corner of corners) {
+          if(this.isEdgeFlipTopologicalConditionsMet(corner)) {
+            cornerToFlip = corner;
+            break;
+          }
+        }
+        if(cornerToFlip === -1) {
+          console.log("Something is wrong with the data structure! Corner to flip (delta<0) wasnt found.")
+        }
+        this.edgeFlip(cornerToFlip);
+      }
+      else if(valenceDelta > 0) {
+        for(let i: number = 0; i<valenceDelta; i++) {
+          let cornerToFlip: Corner = -1;
+          let corners: Corner[] = this.getCornersThatShareSameVertexClockwise(cornerSelected);
+          for(let corner of corners) {
+            // choosing the this.next instead of this.next preserves existing corners around the vertice
+            if(this.isEdgeFlipTopologicalConditionsMet(this.next(corner))) {
+              cornerToFlip = corner;
+              break;
+            }
+          }
+          if(cornerToFlip === -1) {
+            console.log("Something is wrong with the data structure! Corner to flip (delta>0) wasnt found.")
+          }
+          this.edgeFlip(this.next(cornerToFlip));
+          cornerSelected = cornerToFlip;
+          if(this.V[cornerSelected] !== vertexSelected) {
+            console.log("Corner selected went wrong!");
+          }
+        }
+      }
 
-    if(this.valenceOfVertexAssociatedToCorner(cornerSelected) != 4) {
-      console.log("Something went wrong!");
+      if(this.valenceOfVertexAssociatedToCorner(cornerSelected) !== 4) {
+        console.log("Something went wrong on corner valence!");
+      }
+      if(!this.isEdgeWeldTopologicalConditionsMet(cornerSelected)) {
+        if(!this.isEdgeWeldTopologicalConditionsMet(this.clockwise(cornerSelected))) {
+          console.log("Something went wrong on edge weld condition");
+          continue;
+        } else {
+          this.edgeWeld(this.clockwise(cornerSelected));
+        }
+      } else {
+        this.edgeWeld(cornerSelected);
+      }
+    }
+  }
+
+  public simplifyOneLevel(): void {
+    for(let i=0; i<12; i++) {
+      // console.log("Topologically good? " + (this.isCornerTableTopologicallyGood() ? "YES" : "NO"));
+      this.simplifyToNextMeshLevel();
+      // console.log("Topologically good? " + (this.isCornerTableTopologicallyGood() ? "YES" : "NO"));
+      this.cleanRemovedElements();
+      // console.log("Topologically good? " + (this.isCornerTableTopologicallyGood() ? "YES" : "NO"));
+      console.log(i + "- num vertices = " + this.getExistingVertices().length);
+      const used = process.memoryUsage().heapUsed / 1024 / 1024;
+      console.log(`The script uses approximately ${Math.round(used * 100) / 100} MB`);
+      console.log(`=========================`);
     }
   }
 

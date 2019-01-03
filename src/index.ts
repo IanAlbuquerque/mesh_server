@@ -28,7 +28,7 @@ app.get('/mesh/:id/:steps', function (request, response) {
   const id: string = request.params.id;
   const steps: string = request.params.steps;
   const numSteps: number = parseInt(steps);
-  console.log(`Received call from ${request.ip} for /mesh/` + id);
+  console.log(`>>>>> Received call from ${request.ip} for /mesh/` + id + `/` + steps);
   fs.readFile('./meshes/' + id + '.obj', (err, data) => {
     if (err) {
       response.status(500).send(`Internal error when reading mesh ` + err);
@@ -39,10 +39,12 @@ app.get('/mesh/:id/:steps', function (request, response) {
     if(numSteps > 0) {
       cornerTable.simplifyNLevels(numSteps);
     }
+    console.log("Starting compression....");
     const compression: { delta: number[], clers: string[] } = cornerTable.initCompression(0);
     // const cornerTableRebuilt: CornerTable = new CornerTable();
     // cornerTableRebuilt.decompress(compression.delta, compression.clers);
     // response.status(200).send(JSON.stringify(cornerTableRebuilt.getData()));
+    console.log(`<<<<< Responding call from ${request.ip} for /mesh/` + id + `/` + steps);
     response.status(200).send(JSON.stringify({ delta: compression.delta, clers: compression.clers.join('') }));
   });
 });

@@ -182,6 +182,12 @@ export class CornerTable {
         throw "Given mesh does not agree with hypothesis";
       }
     }
+
+    if(this.getExistingVertices().length - (this.V.length / 2) + (this.V.length / 3) !== 2) {
+      throw "Mesh not topologically good!";
+    } else {
+      console.log("Corner table initialized!");
+    }
   }
   
   // ==================================================================

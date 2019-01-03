@@ -47,7 +47,7 @@ export class Mat4 {
   public multiplyVec4(vec: Vector4): Vector4 {
     const mat: mathjs.Matrix = this.vec4ToMatrix(vec);
     const res: mathjs.Matrix = mathjs.multiply(this.matrix, mat) as mathjs.Matrix;
-    return new Vector4(res[0][0], res[1][0], res[2][0], res[3][0]);
+    return new Vector4(res.get([0, 0]), res.get([1, 0]), res.get([2, 0]), res.get([3, 0]));
   }
 
   public multiplyVec3(vec: Vector3, w: number): Vector3 {
@@ -58,7 +58,7 @@ export class Mat4 {
     const mat: mathjs.Matrix = this.vec4ToMatrix(vec);
     const matT: mathjs.Matrix = mathjs.transpose(mat) as mathjs.Matrix;
     const res: mathjs.Matrix = mathjs.multiply(matT, mathjs.multiply(this.matrix, mat)) as mathjs.Matrix;
-    return res[0][0];
+    return res.get([0, 0]);
   }
 
   public quadricVec3(vec: Vector3, w: number): number {
@@ -69,5 +69,14 @@ export class Mat4 {
     const res: Mat4 = new Mat4();
     res.matrix = mathjs.add(this.matrix, other.matrix) as mathjs.Matrix;
     return res;
+  }
+
+  public print(): void {
+    for(let i: number=0; i<4; i++) {
+      for(let j: number=0; j<4; j++) {
+        console.log(this.matrix.get([i,j]));
+      }
+      console.log("-");
+    }
   }
 }

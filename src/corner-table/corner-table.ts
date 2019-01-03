@@ -1,5 +1,5 @@
 import { Vector3, Vector4, Mat4, normalFromTriangleVertices } from "./../linalg";
-import { FibonacciHeap } from '@tyriar/fibonacci-heap';
+import { FibonacciHeap, INode } from '@tyriar/fibonacci-heap';
 
 // Those are just aliases so the code is clear(er)
 // The "& { readonly brand?: unique symbol }" is such that one type cannot be typecasted to the other (and we get compile errors for that!)
@@ -31,6 +31,13 @@ export class CornerTable {
 
   // The opposite corner array
   public O: Corner[] = [];
+
+  // the quadrics array
+  // for use in the simplification algorithm only
+  private Q: Mat4[] = [];
+
+  private heap: FibonacciHeap<number, { vertex: Vertex, valid: boolean }> = new FibonacciHeap<number, { vertex: Vertex, valid: boolean }>();
+  private validEntryPerVertex: { [vertex: number]: { vertex: Vertex, valid: boolean } } = [];
 
   constructor() {
     this.G = [];
@@ -604,6 +611,16 @@ export class CornerTable {
     this.cleanRemovedElements();
   }
 
+  private findCornerAtAGivenVertex(v: Vertex): Corner {
+    for(let i: number = 0; i < this.V.length; i++) {
+      if(this.isCornerInMesh(i) && this.V[i] === v) {
+        return i;
+      }
+    }
+    console.log("Error! Could not find a corner for vertex " + v);
+    return -1;
+  }
+
   private simplifyToNextMeshLevel(): void {
     const existingVertices: Vertex[] = this.getExistingVertices();
     const isVertexAvailable: { [vertex: number]: boolean } = {};
@@ -619,31 +636,44 @@ export class CornerTable {
       isVertexAvailable[vertex] = true;
     }
 
-    let iterations: number = 0;
+    console.log("HEAP SIZE = " + this.heap.size());
+    const nodesToAddBackToQueue: { cost: number, entry: {vertex: Vertex, valid: boolean }}[] = [];
     while(true) {
-      iterations++;
+
       //select a vertex
       let cornerSelected: Corner = -1;
       let vertexSelected: Vertex = -1;
-      for(let corner: Corner =0; corner<this.V.length; corner++) {
-        if(isVertexAvailable[this.V[corner]] && this.isCornerInMesh(corner)) {
-          cornerSelected = corner;
-          vertexSelected = this.V[cornerSelected];
+
+      // for(let corner: Corner =0; corner<this.V.length; corner++) {
+      //   if(isVertexAvailable[this.V[corner]] && this.isCornerInMesh(corner)) {
+      //     cornerSelected = corner;
+      //     vertexSelected = this.V[cornerSelected];
+      //     break;
+      //   }
+      // }
+
+      while(true) {
+        if(this.heap.isEmpty()) {
           break;
         }
+        const node: INode<number, { vertex: Vertex, valid: boolean }> = this.heap.extractMinimum();
+        if(!node.value.valid) {
+          continue;
+        }
+        if(!isVertexAvailable[node.value.vertex]) {
+          nodesToAddBackToQueue.push({ cost: node.key, entry: node.value });
+          continue;
+        }
+        vertexSelected = node.value.vertex;
+        cornerSelected = this.findCornerAtAGivenVertex(vertexSelected);
+        break;
       }
 
       // end algorithm
       if(cornerSelected === -1) {
+        console.log("ending....");
         break;
       }
-
-      // mark vertices
-      let corners: Corner[] = this.getCornersThatShareSameVertexClockwise(cornerSelected);
-      for(const corner of corners) {
-        isVertexAvailable[this.V[this.next(corner)]] = false;
-      }
-      isVertexAvailable[this.V[cornerSelected]] = false;
 
       const valenceDelta: number = this.valenceOfVertexAssociatedToCorner(cornerSelected) - 4;
 
@@ -679,6 +709,7 @@ export class CornerTable {
           }
           this.edgeFlip(this.next(cornerToFlip));
           cornerSelected = cornerToFlip;
+          // vertexSelected = this.V[cornerSelected];
           if(this.V[cornerSelected] !== vertexSelected) {
             console.log("Corner selected went wrong!");
           }
@@ -698,20 +729,132 @@ export class CornerTable {
       } else {
         this.edgeWeld(cornerSelected);
       }
+
+      // mark vertices
+      // let corners: Corner[] = this.getCornersThatShareSameVertexClockwise(cornerSelected);
+      // for(const corner of corners) {
+      //   isVertexAvailable[this.V[this.next(corner)]] = false;
+      // }
+      // isVertexAvailable[this.V[cornerSelected]] = false;
+      isVertexAvailable[vertexSelected] = false;
+      isVertexAvailable[this.V[cornerSelected]] = false;
+      isVertexAvailable[this.V[this.next(cornerSelected)]] = false;
+      isVertexAvailable[this.V[this.prev(cornerSelected)]] = false;
+      isVertexAvailable[this.V[this.O[this.next(cornerSelected)]]] = false;
+
+      this.Q[this.V[cornerSelected]] = this.Q[this.V[cornerSelected]].add(this.Q[vertexSelected]);
+      this.Q[this.V[this.prev(cornerSelected)]] = this.Q[this.V[this.prev(cornerSelected)]].add(this.Q[vertexSelected]);
+      const link1: Vertex[] = this.getLinkClockwise(cornerSelected);
+      const link2: Vertex[] = this.getLinkClockwise(this.prev(cornerSelected));
+      const union: Vertex[] = [];
+      for(let vertex of link1) {
+        if(union.indexOf(vertex) === -1) {
+          union.push(vertex);
+        }
+      }
+      for(let vertex of link2) {
+        if(union.indexOf(vertex) === -1) {
+          union.push(vertex);
+        }
+      }
+      
+      this.validEntryPerVertex[vertexSelected].valid = false;
+      for(let vertex of union) {
+        this.validEntryPerVertex[vertex].valid = false;
+        const c0 = this.findCornerAtAGivenVertex(vertex);
+        const error: number = this.costOfVertex(c0);
+        // console.log(error);
+        const entry: { vertex: Vertex, valid: boolean } = { vertex: vertex, valid: true };
+        this.validEntryPerVertex[vertex] = entry;
+        this.heap.insert(error, entry);
+      }
+
     }
+    for(let node of nodesToAddBackToQueue) {
+      this.heap.insert(node.cost, node.entry);
+    }
+    console.log("Heap ending with = " + this.heap.size());
   }
 
-  public simplifyOneLevel(): void {
-    for(let i=0; i<12; i++) {
-      // console.log("Topologically good? " + (this.isCornerTableTopologicallyGood() ? "YES" : "NO"));
+  private costOfSingleEdgeSwap(c0: Corner): number {
+    return this.Q[this.V[this.O[c0]]].quadricVec3(this.getVertexCoords(this.V[c0]), 1.0);
+  }
+
+  private costOfEdgeSwaps(c0: Corner): number {
+    const corners: Corner[] = this.getCornersThatShareSameVertexClockwise(c0);
+    let cost: number = 0;
+    if(this.valenceOfVertexAssociatedToCorner(c0) < 4) {
+      for(let corner of corners) {
+        cost += this.costOfSingleEdgeSwap(corner);
+      }
+    } else if(this.valenceOfVertexAssociatedToCorner(c0) > 4) {
+      for(let corner of corners) {
+        cost += this.costOfSingleEdgeSwap(this.next(corner));
+      }
+    } else {
+      cost = 0;
+    }
+    return cost;
+  }
+
+  private costOfVertexRemoval(c0: Corner): number {
+    const link: Vertex[] = this.getLinkClockwise(c0);
+    const values: number[] = [];
+    for(let vertex of link) {
+      const value: number = this.Q[this.V[c0]].add(this.Q[vertex]).quadricVec3(this.getVertexCoords(vertex), 1.0);
+      values.push(value);
+    }
+    return Math.min(...values); // spread operator
+  }
+
+  private costOfVertex(c0: Corner): number {
+    const alpha: number = 0.75;
+    const beta: number = 1.0 - alpha;
+    const C: number = this.costOfVertexRemoval(c0);
+    const S: number = this.costOfEdgeSwaps(c0);
+    return (alpha * C) + (beta * S);
+  }
+
+  public simplifyNLevels(n: number): void {
+    console.log("Starting num vertices = " + this.getExistingVertices().length);
+
+    this.initQuadrics();
+    const corners: Corner[] = this.getExistingCorners();
+    this.heap.clear();
+    this.validEntryPerVertex = {};
+    for(let corner of corners) {
+      const v: Vertex = this.V[corner];
+      if(this.validEntryPerVertex[v] === undefined ) {
+        const error: number = this.costOfVertex(corner);
+        const entry: { vertex: Vertex, valid: boolean } = { vertex: v, valid: true };
+        this.heap.insert(error, entry);
+        this.validEntryPerVertex[v] = entry;
+      }
+    }
+    for(let i=0; i<n; i++) {
       this.simplifyToNextMeshLevel();
-      // console.log("Topologically good? " + (this.isCornerTableTopologicallyGood() ? "YES" : "NO"));
-      this.cleanRemovedElements();
-      // console.log("Topologically good? " + (this.isCornerTableTopologicallyGood() ? "YES" : "NO"));
       console.log(i + "- num vertices = " + this.getExistingVertices().length);
       const used = process.memoryUsage().heapUsed / 1024 / 1024;
       console.log(`The script uses approximately ${Math.round(used * 100) / 100} MB`);
       console.log(`=========================`);
+    }
+    this.cleanRemovedElements();
+    this.Q = [];
+  }
+
+  private initQuadrics(): void {
+    const vertices: Vertex[] = this.getExistingVertices();
+    const corners: Corner[] = this.getExistingCorners();
+    const verticesComputed: Vertex[] = [];
+    this.Q = [];
+    for(let vertex of vertices) {
+      this.Q.push();
+    }
+    for(let corner of corners) {
+      if(this.isCornerInMesh(corner) && verticesComputed.indexOf(this.V[corner]) == -1) {
+        this.Q[this.V[corner]] = this.getQuadricFromCorner(corner);
+        verticesComputed.push(this.V[corner]);
+      }
     }
   }
 

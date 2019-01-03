@@ -38,7 +38,7 @@ export class Vector4 {
     this.array[0] = x;
     this.array[1] = y;
     this.array[2] = z;
-    this.array[2] = w;
+    this.array[3] = w;
   }
 
   public dot(vec: Vector4): number {

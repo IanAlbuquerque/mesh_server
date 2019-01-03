@@ -861,4 +861,247 @@ export class CornerTable {
   // ==================================================================
   // #endregion
   // ==================================================================
+
+  // ==================================================================
+  // #region EDGEBREAKER
+  // ==================================================================
+
+  private isVertexVisitedEdgeBreaker: boolean[] = [];
+  private isTriangleVisitedEdgeBreaker: boolean[] = [];
+  private deltaEdgeBreaker: number[] = [];
+  private clers: string[] = [];
+
+  private cornerTriangle(c0: Corner): number {
+    return (c0 - (c0 % 3)) / 3;
+  }
+
+  public initCompression(c0: Corner): { delta: number[], clers: string[] } {
+    this.isVertexVisitedEdgeBreaker = [];
+    this.isTriangleVisitedEdgeBreaker = [];
+    this.deltaEdgeBreaker = [];
+    this.clers = [];
+
+    for(let i=0; i<this.V.length / 3; i++) {
+      this.isTriangleVisitedEdgeBreaker[i] = false;
+    }
+    for(let i=0; i<this.V.length; i++) {
+      this.isVertexVisitedEdgeBreaker[i] = false;
+    }
+
+    this.deltaEdgeBreaker.push(this.getVertexX(this.V[this.prev(c0)]));
+    this.deltaEdgeBreaker.push(this.getVertexY(this.V[this.prev(c0)]));
+    this.deltaEdgeBreaker.push(this.getVertexZ(this.V[this.prev(c0)]));
+    this.deltaEdgeBreaker.push(this.getVertexX(this.V[c0]) - this.getVertexX(this.V[this.prev(c0)]));
+    this.deltaEdgeBreaker.push(this.getVertexY(this.V[c0]) - this.getVertexY(this.V[this.prev(c0)]));
+    this.deltaEdgeBreaker.push(this.getVertexZ(this.V[c0]) - this.getVertexZ(this.V[this.prev(c0)]));
+    this.deltaEdgeBreaker.push(this.getVertexX(this.V[this.next(c0)]) - this.getVertexX(this.V[c0]));
+    this.deltaEdgeBreaker.push(this.getVertexY(this.V[this.next(c0)]) - this.getVertexY(this.V[c0]));
+    this.deltaEdgeBreaker.push(this.getVertexZ(this.V[this.next(c0)]) - this.getVertexZ(this.V[c0]));
+
+    this.isVertexVisitedEdgeBreaker[this.V[c0]] = true;
+    this.isVertexVisitedEdgeBreaker[this.V[this.prev(c0)]] = true;
+    this.isVertexVisitedEdgeBreaker[this.V[this.next(c0)]] = true;
+    this.isTriangleVisitedEdgeBreaker[this.cornerTriangle(c0)] = true;
+
+    this.compressEdgeBreaker(this.O[c0]);
+
+    const res: { delta: number[], clers: string[] } = { delta: this.deltaEdgeBreaker, clers: this.clers };
+    this.isVertexVisitedEdgeBreaker = [];
+    this.isTriangleVisitedEdgeBreaker = [];
+    this.deltaEdgeBreaker = [];
+    this.clers = [];
+    return res;
+  }
+
+  private compressEdgeBreaker(c0: Corner): void {
+    while(true) {
+      this.isTriangleVisitedEdgeBreaker[this.cornerTriangle(c0)] = true;
+      if(!this.isVertexVisitedEdgeBreaker[this.V[c0]]) {
+        this.deltaEdgeBreaker.push( this.getVertexX(this.V[c0]) -
+                                    this.getVertexX(this.V[this.prev(c0)]) -
+                                    this.getVertexX(this.V[this.next(c0)]) +
+                                    this.getVertexX(this.V[this.O[c0]]));
+        this.deltaEdgeBreaker.push( this.getVertexY(this.V[c0]) -
+                                    this.getVertexY(this.V[this.prev(c0)]) -
+                                    this.getVertexY(this.V[this.next(c0)]) +
+                                    this.getVertexY(this.V[this.O[c0]]));
+        this.deltaEdgeBreaker.push( this.getVertexZ(this.V[c0]) -
+                                    this.getVertexZ(this.V[this.prev(c0)]) -
+                                    this.getVertexZ(this.V[this.next(c0)]) +
+                                    this.getVertexZ(this.V[this.O[c0]]));
+        this.clers.push("C");
+        this.isVertexVisitedEdgeBreaker[this.V[c0]] = true;
+        c0 = this.left(c0);
+      } else if (this.isTriangleVisitedEdgeBreaker[this.cornerTriangle(this.left(c0))]) {
+        if(this.isTriangleVisitedEdgeBreaker[this.cornerTriangle(this.right(c0))]) {
+          this.clers.push("E");
+          return;
+        } else {
+          this.clers.push("R");
+          c0 = this.right(c0);
+        }
+      } else {
+        if(this.isTriangleVisitedEdgeBreaker[this.cornerTriangle(this.right(c0))]) {
+          this.clers.push("L");
+          c0 = this.left(c0);
+        } else {
+          this.clers.push("S");
+          this.compressEdgeBreaker(this.left(c0));
+          c0 = this.right(c0);
+        }
+      }
+    }
+  }
+
+  private lastTriangleDecompressed: number = 0;
+  private lastVertexEncountered: number = 0;
+
+  public decompress(delta: number[], clers: string[]): void {
+    this.clers = clers;
+    this.deltaEdgeBreaker = delta;
+    const numCorners: number = (clers.length + 1) * 3;
+    this.V = [0, 1, 2];
+    this.O = [-1, -3, -1];
+    for(let i=0; i<numCorners - 3; i++) {
+      this.V.push(0);
+      this.O.push(-3);
+    }
+    this.lastTriangleDecompressed = 0;
+    this.lastVertexEncountered = 2;
+    this.decompressConnectivity(1);
+
+    const numTriangles: number = delta.length / 3;
+    this.isVertexVisitedEdgeBreaker = [];
+    this.isTriangleVisitedEdgeBreaker = [];
+    for(let i=0; i<numTriangles; i++) {
+      this.isTriangleVisitedEdgeBreaker[i] = false;
+    }
+    const vertices: Vertex[] = this.getExistingVertices();
+    for(let vertex of vertices) {
+      this.isVertexVisitedEdgeBreaker[vertex] = false;
+      this.G.push(-1);
+      this.G.push(-1);
+      this.G.push(-1);
+    }
+    this.G[0] = (this.deltaEdgeBreaker.shift());
+    this.G[1] = (this.deltaEdgeBreaker.shift());
+    this.G[2] = (this.deltaEdgeBreaker.shift());
+    this.G[3] = (this.deltaEdgeBreaker.shift() + this.G[0]);
+    this.G[4] = (this.deltaEdgeBreaker.shift() + this.G[1]);
+    this.G[5] = (this.deltaEdgeBreaker.shift() + this.G[2]);
+    this.G[6] = (this.deltaEdgeBreaker.shift() + this.G[3]);
+    this.G[7] = (this.deltaEdgeBreaker.shift() + this.G[4]);
+    this.G[8] = (this.deltaEdgeBreaker.shift() + this.G[5]);
+    this.lastVertexEncountered = 2;
+    this.isVertexVisitedEdgeBreaker[0] = true;
+    this.isVertexVisitedEdgeBreaker[1] = true;
+    this.isVertexVisitedEdgeBreaker[2] = true;
+    this.isTriangleVisitedEdgeBreaker[0] = true;
+    this.decompressVertices(this.O[1]);
+
+    this.isVertexVisitedEdgeBreaker = [];
+    this.isTriangleVisitedEdgeBreaker = [];
+    this.deltaEdgeBreaker = [];
+    this.clers = [];
+  }
+
+  private decompressConnectivity(c0: Corner): void {
+    while(true) {
+      this.lastTriangleDecompressed++;
+      this.O[c0] = 3 * this.lastTriangleDecompressed;
+      this.O[3 * this.lastTriangleDecompressed] = c0;
+      this.V[3 * this.lastTriangleDecompressed + 1] = this.V[this.prev(c0)];
+      this.V[3 * this.lastTriangleDecompressed + 2] = this.V[this.next(c0)];
+      c0 = this.next(this.O[c0]);
+      switch(this.clers.shift()) {
+        case "C":
+          this.O[this.next(c0)] = -1;
+          this.V[3 * this.lastTriangleDecompressed]= ++this.lastVertexEncountered;
+          break;
+        case "L":
+          this.O[this.next(c0)] = -2;
+          this.zip(this.next(c0));
+          break;
+        case "R":
+          this.O[c0] = -2;
+          c0 = this.next(c0);
+          break;
+        case "S":
+          this.decompressConnectivity(c0);
+          c0 = this.next(c0);
+          break;
+        case "E":
+          this.O[c0] = -2;
+          this.O[this.next(c0)] = -2;
+          this.zip(this.next(c0));
+          return;
+          break;
+      }
+    }
+  }
+
+  private zip(c0: Corner) {
+    let b: Corner = this.next(c0);
+    while(this.O[b] > 0) {
+      b = this.next(this.O[b]);
+    }
+    if(this.O[b] != -1) {
+      return;
+    }
+    this.O[c0] = b;
+    this.O[b] = c0;
+    let a: Corner = this.prev(c0);
+    this.V[this.prev(a)] = this.V[this.prev(b)];
+    while(this.O[a] >= 0 && b !== a) {
+      a = this.prev(this.O[a]);
+      this.V[this.prev(a)] = this.V[this.prev(b)];
+    }
+    c0 = this.prev(c0);
+    while(this.O[c0] >= 0 && c0 !== b) {
+      c0 = this.prev(this.O[c0]);
+    }
+    if(this.O[c0] == -2) {
+      this.zip(c0);
+    }
+  }
+
+  private decompressVertices(c0: Corner) {
+    while(true) {
+      this.isTriangleVisitedEdgeBreaker[this.cornerTriangle(c0)] = true;
+      if(!this.isVertexVisitedEdgeBreaker[this.V[c0]]) {
+        this.lastVertexEncountered++;
+        this.G[this.lastVertexEncountered * 3 + 0] =  this.getVertexX(this.V[this.prev(c0)]) +
+                                                      this.getVertexX(this.V[this.next(c0)]) -
+                                                      this.getVertexX(this.V[this.O[c0]]) +
+                                                      this.deltaEdgeBreaker.shift();
+        this.G[this.lastVertexEncountered * 3 + 1] =  this.getVertexY(this.V[this.prev(c0)]) +
+                                                      this.getVertexY(this.V[this.next(c0)]) -
+                                                      this.getVertexY(this.V[this.O[c0]]) +
+                                                      this.deltaEdgeBreaker.shift();
+        this.G[this.lastVertexEncountered * 3 + 2] =  this.getVertexZ(this.V[this.prev(c0)]) +
+                                                      this.getVertexZ(this.V[this.next(c0)]) -
+                                                      this.getVertexZ(this.V[this.O[c0]]) +
+                                                      this.deltaEdgeBreaker.shift();
+        this.isVertexVisitedEdgeBreaker[this.V[c0]] = true;
+        c0 = this.left(c0);
+      } else if (this.isTriangleVisitedEdgeBreaker[this.cornerTriangle(this.left(c0))]) {
+        if(this.isTriangleVisitedEdgeBreaker[this.cornerTriangle(this.right(c0))]) {
+          return;
+        } else {
+          c0 = this.right(c0);
+        }
+      } else {
+        if(this.isTriangleVisitedEdgeBreaker[this.cornerTriangle(this.right(c0))]) {
+          c0 = this.left(c0);
+        } else {
+          this.decompressVertices(this.left(c0));
+          c0 = this.right(c0);
+        }
+      }
+    }
+  }
+
+  // ==================================================================
+  // #endregion
+  // ==================================================================
 }

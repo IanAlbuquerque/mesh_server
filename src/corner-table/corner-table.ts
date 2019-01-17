@@ -485,6 +485,11 @@ export class CornerTable {
     // Perform vertex removal
     this.V[c0] = w;
     this.V[c4] = w;
+    
+    this.vertexToCornerDic[t] = c1;
+    this.vertexToCornerDic[s] = c3;
+    this.vertexToCornerDic[u] = c2;
+    this.vertexToCornerDic[w] = c0;
 
     // Mark Removed Elements
     this.O[this.O[c2]] = REMOVED_CORNER;
@@ -548,6 +553,11 @@ export class CornerTable {
     this.V[c3] = v;
     this.V[c4] = s;
     this.V[c5] = t;
+
+    this.vertexToCornerDic[t] = c0;
+    this.vertexToCornerDic[s] = c1;
+    this.vertexToCornerDic[u] = c2;
+    this.vertexToCornerDic[v] = c3;
 
     // Reset opposite corners
     this.O[c0] = a;
@@ -671,7 +681,7 @@ export class CornerTable {
           continue;
         }
         vertexSelected = node.value.vertex;
-        cornerSelected = this.findCornerAtAGivenVertex(vertexSelected);
+        cornerSelected = this.vertexToCornerDic[vertexSelected];
         break;
       }
 
@@ -687,11 +697,20 @@ export class CornerTable {
       // so valenceDelta < 0 is equivalent to valenceDelta === -1
       if(valenceDelta < 0) {
         let cornerToFlip: Corner = -1;
+        let cost: number = -1;
         let corners: Corner[] = this.getCornersThatShareSameVertexClockwise(cornerSelected);
         for(let corner of corners) {
           if(this.isEdgeFlipTopologicalConditionsMet(corner)) {
-            cornerToFlip = corner;
-            break;
+            if(cornerToFlip === -1) {
+              cornerToFlip = corner;
+              cost = this.costOfSingleEdgeSwap(cornerToFlip);
+            } else {
+              let newCost: number = this.costOfSingleEdgeSwap(corner);
+              if(newCost < cost) {
+                cornerToFlip = corner;
+                cost = newCost;
+              }
+            }
           }
         }
         if(cornerToFlip === -1) {
@@ -702,12 +721,25 @@ export class CornerTable {
       else if(valenceDelta > 0) {
         for(let i: number = 0; i<valenceDelta; i++) {
           let cornerToFlip: Corner = -1;
+          let cost: number = -1;
           let corners: Corner[] = this.getCornersThatShareSameVertexClockwise(cornerSelected);
           for(let corner of corners) {
             // choosing the this.next instead of this.next preserves existing corners around the vertice
+            // if(this.isEdgeFlipTopologicalConditionsMet(this.next(corner))) {
+            //   cornerToFlip = corner;
+            //   break;
+            // }
             if(this.isEdgeFlipTopologicalConditionsMet(this.next(corner))) {
-              cornerToFlip = corner;
-              break;
+              if(cornerToFlip === -1) {
+                cornerToFlip = corner;
+                cost = this.costOfSingleEdgeSwap(this.next(corner));
+              } else {
+                let newCost: number = this.costOfSingleEdgeSwap(this.next(corner));
+                if(newCost < cost) {
+                  cornerToFlip = corner;
+                  cost = newCost;
+                }
+              }
             }
           }
           if(cornerToFlip === -1) {
@@ -767,7 +799,7 @@ export class CornerTable {
       this.validEntryPerVertex[vertexSelected].valid = false;
       for(let vertex of union) {
         this.validEntryPerVertex[vertex].valid = false;
-        const c0 = this.findCornerAtAGivenVertex(vertex);
+        const c0 = this.vertexToCornerDic[vertex];
         const error: number = this.costOfVertex(c0);
         // console.log(error);
         const entry: { vertex: Vertex, valid: boolean } = { vertex: vertex, valid: true };
@@ -821,8 +853,11 @@ export class CornerTable {
     return (alpha * C) + (beta * S);
   }
 
+  private vertexToCornerDic: { [vertex: number]: Corner } = {};
+
   public simplifyNLevels(n: number): void {
-    console.log("Starting num vertices = " + this.getExistingVertices().length);
+    const vertices: Vertex[] = this.getExistingVertices();
+    console.log("Starting num vertices = " + vertices.length);
 
     this.initQuadrics();
     const corners: Corner[] = this.getExistingCorners();
@@ -837,6 +872,12 @@ export class CornerTable {
         this.validEntryPerVertex[v] = entry;
       }
     }
+
+    this.vertexToCornerDic = {};
+    for(let corner of corners) {
+      this.vertexToCornerDic[this.V[corner]] = corner;
+    }
+
     for(let i=0; i<n; i++) {
       this.simplifyToNextMeshLevel();
       console.log(i + "- num vertices = " + this.getExistingVertices().length);
@@ -845,7 +886,10 @@ export class CornerTable {
       console.log(`=========================`);
     }
     this.cleanRemovedElements();
+
     this.Q = [];
+    this.heap.clear();
+    this.vertexToCornerDic = {};
   }
 
   private initQuadrics(): void {
